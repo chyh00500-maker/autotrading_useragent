@@ -117,6 +117,7 @@ async def register_with_central(agent_url: str):
                 json={
                     "agent_url": agent_url,
                     "agent_token": settings.agent_token,
+                    "exchange": settings.exchange,
                 }
             )
             if resp.status_code == 200:
