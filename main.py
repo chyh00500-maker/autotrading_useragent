@@ -169,8 +169,22 @@ async def _notify_manual_position(symbol: str, pos: dict, is_addon: bool):
 
 
 async def _notify_position_closed(symbol: str):
-    """청산 콜백"""
-    await _post_to_central("/api/agent/position-closed", {"symbol": symbol})
+    """청산 콜백 — Bybit에서 closed PnL 조회 후 전송"""
+    client = get_exchange_client()
+    payload: dict = {"symbol": symbol}
+    try:
+        pnl_info = await client.get_closed_pnl(symbol)
+        if pnl_info:
+            if pnl_info.get("avgExitPrice"):
+                payload["exit_price"] = str(pnl_info["avgExitPrice"])
+            if pnl_info.get("closedPnl") is not None:
+                payload["realized_pnl"] = str(pnl_info["closedPnl"])
+            if pnl_info.get("cumEntryValue") and pnl_info.get("cumExitValue"):
+                # commission = sum of entry+exit fees (Bybit doesn't expose directly)
+                pass
+    except Exception as e:
+        logger.warning(f"[ManualDetect] closed_pnl 조회 실패: {e}")
+    await _post_to_central("/api/agent/position-closed", payload)
 
 
 async def _notify_position_heartbeat(symbol: str, pos: dict):

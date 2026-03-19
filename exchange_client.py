@@ -369,6 +369,22 @@ class AgentExchangeClient:
             logger.error(f"Failed to close position: {e}")
             raise ExchangeError(f"close_position failed for {symbol}: {e}")
 
+    async def get_closed_pnl(self, symbol: str, limit: int = 1) -> Optional[Dict]:
+        """마지막 청산 포지션의 PnL 정보 조회 (Bybit 전용)"""
+        try:
+            if self.exchange_id != "bybit":
+                return None
+            result = await self.exchange.private_get_v5_position_closed_pnl({
+                "category": "linear",
+                "symbol": symbol,
+                "limit": limit,
+            })
+            rows = result.get("result", {}).get("list", [])
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning(f"get_closed_pnl failed for {symbol}: {e}")
+            return None
+
     async def close(self):
         try:
             await self.exchange.close()
