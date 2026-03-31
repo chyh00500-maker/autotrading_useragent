@@ -153,7 +153,7 @@ async def _post_to_central(path: str, payload: dict):
             else:
                 logger.warning(f"[ManualDetect] {path} 콜백 실패: {resp.status_code} {resp.text}")
     except Exception as e:
-        logger.error(f"[ManualDetect] {path} 콜백 오류: {e}")
+        logger.error(f"[ManualDetect] {path} 콜백 오류: {repr(e)}")
 
 
 async def _notify_manual_position(symbol: str, pos: dict, is_addon: bool):
@@ -278,7 +278,7 @@ async def _notify_tp_filled(symbol: str, pos: dict, prev_qty: float, curr_qty: f
             best_fill = min(fills, key=lambda f: abs(float(f.get("execQty", 0)) - qty_closed))
             actual_exit_price = best_fill.get("execPrice")
     except Exception as e:
-        logger.warning(f"[TpFilled] fills 조회 실패: {e}")
+        logger.warning(f"[TpFilled] fills 조회 실패: {repr(e)}")
 
     payload = {
         "symbol": symbol,
