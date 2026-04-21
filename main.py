@@ -115,7 +115,6 @@ class ExecuteRequest(BaseModel):
     order_id: Optional[str] = None
     expected_position_size: Optional[float] = None  # None = 검증 생략
     timestamp: str              # ISO 형식
-    hmac_signature: str
 
 
 # ===== 중앙 서버 등록 =====
@@ -605,31 +604,33 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @limiter.limit("30/minute")
 async def execute_order(request: Request, execute_req: ExecuteRequest):
     request_obj = request
+    raw_body = await request_obj.body()
     request = execute_req
     """
     중앙 서버에서 전달받은 주문 실행
 
     보안:
-    - HMAC-SHA256 서명 검증
+    - HMAC-SHA256 서명 검증 (raw body bytes vs X-Hmac-Signature 헤더)
     - Timestamp 60초 초과 거부
     - expected_position_size 검증 (포지션 불일치 감지)
     """
-    # 요청을 dict로 변환 (hmac_signature 검증용)
-    # exclude_unset=True: JSON에 없던 필드(Pydantic 기본값 None)를 제외해 메인서버 canonical과 일치시킴
-    payload = request.model_dump(exclude_unset=True)
-
     # 1. Timestamp 검증
-    if not check_timestamp(payload.get("timestamp", "")):
+    if not check_timestamp(request.timestamp):
         raise HTTPException(status_code=400, detail="Timestamp expired or invalid (max 60s)")
 
-    # 2. HMAC 서명 검증 (payload를 복사해서 검증 — pop하므로 원본 보존)
-    payload_copy = dict(payload)
-    if not verify_hmac_signature(payload_copy):
+    # 2. HMAC 서명 검증: raw body bytes 기반 (Pydantic 재직렬화 없음)
+    x_hmac_sig = request_obj.headers.get("x-hmac-signature", "")
+    expected = hmac.new(
+        settings.token_secret.encode(),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, x_hmac_sig):
         logger.warning(f"HMAC verification failed for order_type={request.order_type}")
         raise HTTPException(status_code=401, detail="Invalid HMAC signature")
 
     # 3. Nonce 중복 방지 (60초 창 내 동일 서명 재전송 차단)
-    sig_val = payload.get("hmac_signature", "")
+    sig_val = x_hmac_sig
     _now = time.time()
     expired_keys = [k for k, v in _used_nonces.items() if _now - v > 60]
     for k in expired_keys:
